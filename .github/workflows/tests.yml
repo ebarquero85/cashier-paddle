@@ -25,21 +25,18 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v2
 
-      - name: Cache dependencies
-        uses: actions/cache@v1
-        with:
-          path: ~/.composer/cache/files
-          key: dependencies-laravel-${{ matrix.laravel }}-php-${{ matrix.php }}-composer-${{ hashFiles('composer.json') }}
-
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php }}
           extensions: dom, curl, libxml, mbstring, zip
+          tools: composer:v2
           coverage: none
 
       - name: Install dependencies
-        run: composer require "illuminate/contracts=${{ matrix.laravel }}" --prefer-dist --no-interaction
+        run: |
+           composer require "illuminate/contracts=${{ matrix.laravel }}" --no-update
+           composer update --prefer-dist --no-interaction --no-progress
 
       - name: Execute tests
         run: vendor/bin/phpunit --verbose
@@ -47,7 +44,7 @@ jobs:
           PADDLE_VENDOR_ID: ${{ secrets.PADDLE_VENDOR_ID }}
           PADDLE_VENDOR_AUTH_CODE: ${{ secrets.PADDLE_VENDOR_AUTH_CODE }}
           PADDLE_PUBLIC_KEY: ${{ secrets.PADDLE_PUBLIC_KEY }}
-          PADDLE_TEST_CUSTOMER_ID: ${{ secrets.PADDLE_TEST_CUSTOMER_ID }}
-          PADDLE_TEST_CUSTOMER_EMAIL: ${{ secrets.PADDLE_TEST_CUSTOMER_EMAIL }}
+          PADDLE_TEST_CHECKOUT: ${{ secrets.PADDLE_TEST_CHECKOUT }}
           PADDLE_TEST_PRODUCT: ${{ secrets.PADDLE_TEST_PRODUCT }}
+          PADDLE_TEST_PLAN_HOBBY: ${{ secrets.PADDLE_TEST_PLAN_HOBBY }}
           PADDLE_TEST_SUBSCRIPTION: ${{ secrets.PADDLE_TEST_SUBSCRIPTION }}

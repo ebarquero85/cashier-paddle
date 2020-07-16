@@ -60,6 +60,16 @@ class Subscription extends Model
     }
 
     /**
+     * Get all of the receipts for the Billable model.
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\HasMany
+     */
+    public function receipts()
+    {
+        return $this->hasMany(Receipt::class, 'paddle_subscription_id', 'paddle_id')->orderByDesc('created_at');
+    }
+
+    /**
      * Determine if the subscription has a specific plan.
      *
      * @param  int  $plan
@@ -559,6 +569,10 @@ class Subscription extends Model
      */
     public function cancel()
     {
+        if ($this->onGracePeriod()) {
+            return $this;
+        }
+
         $nextPayment = $this->nextPayment();
 
         $payload = $this->billable->paddleOptions([
@@ -663,20 +677,13 @@ class Subscription extends Model
     }
 
     /**
-     * Get the user's transactions.
+     * Get the email address of the customer associated to this subscription.
      *
-     * @param  int  $page
-     * @return \Illuminate\Support\Collection
+     * @return string
      */
-    public function transactions($page = 1)
+    public function paddleEmail()
     {
-        $result = Cashier::post("/subscription/{$this->paddle_id}/transactions", array_merge([
-            'page' => $page,
-        ], $this->billable->paddleOptions()));
-
-        return collect($result['response'])->map(function (array $transaction) {
-            return new Transaction($this->billable->customer, $transaction);
-        });
+        return (string) $this->paddleInfo()['user_email'];
     }
 
     /**
