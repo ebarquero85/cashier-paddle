@@ -3,13 +3,13 @@
 namespace Laravel\Paddle\Http\Controllers;
 
 use Carbon\Carbon;
+use Illuminate\Http\Request;
+use Illuminate\Routing\Controller;
+use Illuminate\Support\Str;
 use Laravel\Paddle\Customer;
 use Laravel\Paddle\Events\WebhookHandled;
 use Laravel\Paddle\Events\WebhookReceived;
 use Laravel\Paddle\Http\Middleware\VerifyWebhookSignature;
-use Illuminate\Http\Request;
-use Illuminate\Routing\Controller;
-use Illuminate\Support\Str;
 use Laravel\Paddle\Receipt;
 use Laravel\Paddle\Subscription;
 use Symfony\Component\HttpFoundation\Response;
@@ -65,7 +65,7 @@ class WebhookController extends Controller
      */
     protected function handlePaymentSucceeded(array $payload)
     {
-        if (Receipt::where('order_id', $payload['order_id'])->count()) {
+        if ($this->receiptExists($payload['order_id'])) {
             return;
         }
 
@@ -89,11 +89,11 @@ class WebhookController extends Controller
      */
     protected function handleSubscriptionPaymentSucceeded(array $payload)
     {
-        if (Receipt::where('order_id', $payload['order_id'])->count()) {
+        if ($this->receiptExists($payload['order_id'])) {
             return;
         }
 
-        if ($subscription = Subscription::firstWhere('paddle_id', $payload['subscription_id'])) {
+        if ($subscription = $this->findSubscription($payload['subscription_id'])) {
             $billable = $subscription->billable;
         } else {
             $billable = $this->findOrCreateCustomer($payload['passthrough']);
@@ -144,31 +144,33 @@ class WebhookController extends Controller
      */
     protected function handleSubscriptionUpdated(array $payload)
     {
-        if ($subscription = Subscription::firstWhere('paddle_id', $payload['subscription_id'])) {
-            // Plan...
-            if (isset($payload['subscription_plan_id'])) {
-                $subscription->paddle_plan = $payload['subscription_plan_id'];
-            }
-
-            // Status...
-            if (isset($payload['status'])) {
-                $subscription->paddle_status = $payload['status'];
-            }
-
-            // Quantity...
-            if (isset($payload['quantity'])) {
-                $subscription->quantity = $payload['quantity'];
-            }
-
-            // Paused...
-            if (isset($payload['paused_from'])) {
-                $subscription->paused_from = Carbon::createFromFormat('Y-m-d H:i:s', $payload['paused_from'], 'UTC');
-            } else {
-                $subscription->paused_from = null;
-            }
-
-            $subscription->save();
+        if (! $subscription = $this->findSubscription($payload['subscription_id'])) {
+            return;
         }
+
+        // Plan...
+        if (isset($payload['subscription_plan_id'])) {
+            $subscription->paddle_plan = $payload['subscription_plan_id'];
+        }
+
+        // Status...
+        if (isset($payload['status'])) {
+            $subscription->paddle_status = $payload['status'];
+        }
+
+        // Quantity...
+        if (isset($payload['new_quantity'])) {
+            $subscription->quantity = $payload['new_quantity'];
+        }
+
+        // Paused...
+        if (isset($payload['paused_from'])) {
+            $subscription->paused_from = Carbon::createFromFormat('Y-m-d H:i:s', $payload['paused_from'], 'UTC');
+        } else {
+            $subscription->paused_from = null;
+        }
+
+        $subscription->save();
     }
 
     /**
@@ -179,27 +181,23 @@ class WebhookController extends Controller
      */
     protected function handleSubscriptionCancelled(array $payload)
     {
-        if ($subscription = Subscription::firstWhere('paddle_id', $payload['subscription_id'])) {
-            // Cancellation date...
-            if (isset($payload['cancellation_effective_date'])) {
-                if ($payload['cancellation_effective_date']) {
-                    $subscription->ends_at = $subscription->onTrial()
-                        ? $subscription->trial_ends_at
-                        : Carbon::createFromFormat('Y-m-d', $payload['cancellation_effective_date'], 'UTC')->startOfDay();
-                } else {
-                    $subscription->ends_at = null;
-                }
-            }
-
-            // Status...
-            if (isset($payload['status'])) {
-                $subscription->paddle_status = $payload['status'];
-            }
-
-            $subscription->paused_from = null;
-
-            $subscription->save();
+        if (! $subscription = $this->findSubscription($payload['subscription_id'])) {
+            return;
         }
+
+        // Cancellation date...
+        $subscription->ends_at = $subscription->onTrial()
+            ? $subscription->trial_ends_at
+            : Carbon::createFromFormat('Y-m-d', $payload['cancellation_effective_date'], 'UTC')->startOfDay();
+
+        // Status...
+        if (isset($payload['status'])) {
+            $subscription->paddle_status = $payload['status'];
+        }
+
+        $subscription->paused_from = null;
+
+        $subscription->save();
     }
 
     /**
@@ -217,5 +215,27 @@ class WebhookController extends Controller
             'billable_id' => $passthrough['billable_id'],
             'billable_type' => $passthrough['billable_type'],
         ])->billable;
+    }
+
+    /**
+     * Find the first subscription matching a Paddle subscription id.
+     *
+     * @param  string  $subscriptionId
+     * @return \Laravel\Paddle\Subscription|null
+     */
+    protected function findSubscription(string $subscriptionId)
+    {
+        return Subscription::firstWhere('paddle_id', $subscriptionId);
+    }
+
+    /**
+     * Determine if a receipt with a given Order ID already exists.
+     *
+     * @param  string  $orderId
+     * @return bool
+     */
+    protected function receiptExists(string $orderId)
+    {
+        return Receipt::where('order_id', $orderId)->count() > 0;
     }
 }

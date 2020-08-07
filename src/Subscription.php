@@ -583,14 +583,9 @@ class Subscription extends Model
 
         $this->paddle_status = self::STATUS_DELETED;
 
-        // If the user was on trial, we will set the grace period to end when the trial
-        // would have ended. Otherwise, we'll retrieve the end of the billing period
-        // period and make that the end of the grace period for this current user.
-        if ($this->onTrial()) {
-            $this->ends_at = $this->trial_ends_at;
-        } else {
-            $this->ends_at = $nextPayment->date();
-        }
+        $this->ends_at = $this->onTrial()
+                    ? $this->trial_ends_at
+                    : $nextPayment->date();
 
         $this->save();
 
@@ -652,28 +647,12 @@ class Subscription extends Model
     public function nextPayment()
     {
         if (! isset($this->paddleInfo()['next_payment'])) {
-            return null;
+            return;
         }
 
         $payment = $this->paddleInfo()['next_payment'];
 
         return new Payment($payment['amount'], $payment['currency'], $payment['date']);
-    }
-
-    /**
-     * Get info from Paddle about the subscription.
-     *
-     * @return array
-     */
-    public function paddleInfo()
-    {
-        if ($this->paddleInfo) {
-            return $this->paddleInfo;
-        }
-
-        return $this->paddleInfo = Cashier::post('/subscription/users', array_merge([
-            'subscription_id' => $this->paddle_id,
-        ], $this->billable->paddleOptions()))['response'][0];
     }
 
     /**
@@ -684,6 +663,16 @@ class Subscription extends Model
     public function paddleEmail()
     {
         return (string) $this->paddleInfo()['user_email'];
+    }
+
+    /**
+     * Get the payment method type from the subscription.
+     *
+     * @return string
+     */
+    public function paymentMethod()
+    {
+        return (string) $this->paddleInfo()['payment_information']['payment_method'];
     }
 
     /**
@@ -714,5 +703,21 @@ class Subscription extends Model
     public function cardExpirationDate()
     {
         return (string) $this->paddleInfo()['payment_information']['expiry_date'];
+    }
+
+    /**
+     * Get raw information about the subscription from Paddle.
+     *
+     * @return array
+     */
+    public function paddleInfo()
+    {
+        if ($this->paddleInfo) {
+            return $this->paddleInfo;
+        }
+
+        return $this->paddleInfo = Cashier::post('/subscription/users', array_merge([
+            'subscription_id' => $this->paddle_id,
+        ], $this->billable->paddleOptions()))['response'][0];
     }
 }

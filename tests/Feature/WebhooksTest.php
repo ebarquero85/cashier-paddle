@@ -201,7 +201,7 @@ class WebhooksTest extends FeatureTestCase
     {
         $user = $this->createUser();
         $user->customer()->create([
-            'trial_ends_at' => now('UTC')->addDays(5)
+            'trial_ends_at' => now('UTC')->addDays(5),
         ]);
 
         $this->postJson('paddle/webhook', [
@@ -250,7 +250,7 @@ class WebhooksTest extends FeatureTestCase
 
         $this->postJson('paddle/webhook', [
             'alert_name' => 'subscription_updated',
-            'quantity' => 3,
+            'new_quantity' => 3,
             'status' => Subscription::STATUS_PAUSED,
             'paused_from' => ($date = now('UTC')->addDays(5))->format('Y-m-d H:i:s'),
             'subscription_id' => 244,
